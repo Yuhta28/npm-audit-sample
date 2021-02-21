@@ -34,7 +34,7 @@ workflows:
   audit:
     triggers:
       - schedule:
-          cron: "0 * * * *"
+          cron: "10 * * * *"
           filters:
             branches:
               only:
