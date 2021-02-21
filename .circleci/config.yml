@@ -1,43 +1,36 @@
 version: 2.1
 
 jobs:
-  audit_job:
+  npm_publish_job:
     docker:
       - image: cimg/node:lts
     steps:
       - checkout
-      - run: # (d1)
-          name: "npm audit結果を.npm_audit.logファイルに格納する"
-          command: |
-            set +e
-            npm audit --parseable | awk -F $'\t' '{print $4,$5,$6}' > .npm_audit.log
 
-            if [ "$?" -eq 0 ]; then
-              echo "脆弱性のある依存パッケージなし"
-              circleci step halt
-            fi
-      - run: # (d2)
-          name: "GitHub Issueを作成する"
-          command: |
-            body="$(cat .npm_audit.log | sed '/^$/d' | sed '/  /d' | sed 's/$/<br>/')"
+      - run:
+          name: "依存モジュールをインストールする"
+          command: npm install
 
-            curl -u "${GITHUB_USER}":"${GITHUB_TOKEN}" -X POST -i \
-                https://api.github.com/repos/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/issues \
-                -d @- \<< EOF
-                {
-                    "title": "npm audit",
-                    "body" : "${body}"
-                }
-            EOF
+      - run:
+          name: "パッケージをビルドする"
+          command: npm run build
+
+      - run:
+          name: "npmトークンを設定する"
+          command: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
+
+      - run:
+          name: "NPMパッケージとして公開する"
+          command: npm publish
+
+
 workflows:
   version: 2
-  audit:
-    triggers:
-      - schedule:
-          cron: "0 0 * * *"
-          filters:
-            branches:
-              only:
-                - master
+  npm_publish:
     jobs:
-      - audit_job
+      - npm_publish_job:
+          filters:
+            tags:
+              only: /^v.*/
+            branches:
+              ignore: /.*/
