@@ -7,34 +7,44 @@ jobs:
     steps:
       - checkout
       - run: # (d1)
-          name: "npm audit結果を.npm_audit.logファイルに格納する"
+          name: "npm audit fix コマンドで依存パッケージを更新する"
           command: |
-            set +e
-            npm audit --parseable | awk -F $'\t' '{print $4,$5,$6}' > .npm_audit.log
-
-            if [ "$?" -eq 0 ]; then
-              echo "脆弱性のある依存パッケージなし"
-              circleci step halt
-            fi
+            npm audit fix
       - run: # (d2)
-          name: "GitHub Issueを作成する"
+          name: "Gitのセットアップ"
           command: |
-            body="$(cat .npm_audit.log | sed '/^$/d' | sed '/  /d' | sed 's/$/<br>/')"
-
+            git config user.name Yuhta28
+            git config user.email yuta_mori@outlook.jp
+      - run:
+          name: "BRANCH環境変数をエクスポートする"
+          command: |
+            echo 'export BRANCH=npm_audit_fix/${CIRCLE_SHA1}' >> $BASH_ENV
+      - run:
+          name: "更新内容をステージングする"
+          command: |
+            git branch $BRANCH
+            git checkout $BRANCH
+            git add package.json package-lock.json
+    
+      - add_ssh_keys:
+          fingerprints:
+            - a6:01:e5:b6:3a:49:89:97:ea:8b:5d:76:4b:10:18:14
+      
+      - run:
+          name: "ステージングされたファイルがあればGithub PRを作成する"
+          command: |
+            git commit -m "Security Update from ${CIRCLE_BUILD_URL}" &&
+            git push origin $BRANCH &&
             curl -u "${GITHUB_USER}":"${GITHUB_TOKEN}" -X POST -i \
-                https://api.github.com/repos/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/issues \
-                -d @- \<< EOF
-                {
-                    "title": "npm audit",
-                    "body" : "${body}"
-                }
-            EOF
+                https://api.github.com/repos/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/pulls \
+                -d '{ "title":"npm audit fix","base":"master","head":"'${BRANCH}'"}' || true
+
 workflows:
   version: 2
   audit:
     triggers:
       - schedule:
-          cron: "10 * * * *"
+          cron: "45 * * * *"
           filters:
             branches:
               only:
